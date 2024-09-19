@@ -1,0 +1,106 @@
+import cv2
+import numpy as np
+import urllib.request
+import matplotlib.pyplot as plt
+from skimage.measure import regionprops, label
+from segment_anything import SamAutomaticMaskGenerator, SamPredictor
+
+# Function to load image from Google Drive
+def load_image_from_drive(file_id):
+    url = f"https://drive.google.com/uc?id={file_id}"
+    response = urllib.request.urlopen(url)
+    image_data = np.asarray(bytearray(response.read()), dtype="uint8")
+    image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+
+    if image is None:
+        print("Failed to load the image from URL.")
+        return None
+    else:
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+# Function to extract centroids from the segmentation masks
+def extract_centroids(masks):
+    centroids = []
+    for mask in masks:
+        segmentation = mask['segmentation']
+        labeled_mask = label(segmentation)
+        properties = regionprops(labeled_mask)
+        for prop in properties:
+            centroids.append({'centroid': prop.centroid})
+    return centroids
+
+# Function to plot centroids on the image
+def plot_centroids(image, centroids):
+    plt.figure(figsize=(20, 20))
+    plt.imshow(image)
+    for prop in centroids:
+        centroid = prop['centroid']
+        plt.plot(centroid[1], centroid[0], 'ro')  # Plot centroid
+        print(f"Centroid: {centroid}")
+    plt.axis('off')
+    plt.show()
+
+# Function to extract centroids and labels
+def extract_centroids_and_labels(masks):
+    centroid_and_labels = []
+    for index, mask in enumerate(masks, start=1):
+        segmentation = mask['segmentation']
+        labeled_mask = label(segmentation)
+        properties = regionprops(labeled_mask)
+        for prop in properties:
+            centroid_and_labels.append({'centroid': prop.centroid, 'label': index})
+    return centroid_and_labels
+
+# Function to plot centroids and labels on the image
+def plot_centroids_and_labels(image, centroid_and_labels):
+    plt.figure(figsize=(20, 20))
+    plt.imshow(image)
+    for prop in centroid_and_labels:
+        centroid_coords = prop['centroid']
+        label_text = f"Label {prop['label']}"
+        plt.plot(centroid_coords[1], centroid_coords[0], 'ro')  # Plot centroid
+        plt.text(centroid_coords[1] + 10, centroid_coords[0], label_text, color='white', fontsize=12, backgroundcolor='black')  # Annotate with label
+        print(f"Centroid: {centroid_coords}, Label: {prop['label']}")
+    plt.axis('off')
+    plt.show()
+
+# Function to use centroids as point prompts and plot SAM-generated masks
+def generate_sam_masks_from_centroids(image, predictor, centroid_and_labels):
+    plt.figure(figsize=(20, 20))
+    plt.imshow(image)
+    for item in centroid_and_labels:
+        input_point = np.array([item['centroid']])
+        input_label = np.array([1])
+        masks, scores, logits = predictor.predict(
+            point_coords=input_point,
+            point_labels=input_label,
+            multimask_output=False
+        )
+        mask = masks[0]
+        plt.plot(input_point[0][1], input_point[0][0], 'ro')  # Plot the centroid
+        plt.text(input_point[0][1] + 10, input_point[0][0], f"Label {item['label']}", color='white', fontsize=12, backgroundcolor='black')
+        plt.imshow(mask, alpha=0.5)
+    plt.axis('off')
+    plt.show()
+
+# Example Usage
+file_id = "1ZqcGEKOoV2ffywKTfI3aW-s-AzrAQ94b"
+image = load_image_from_drive(file_id)
+
+if image is not None:
+    # Initialize SAM model
+    mask_generator = SamAutomaticMaskGenerator(sam)
+    masks = mask_generator.generate(image)
+
+    # Extract centroids and labels
+    centroid_and_labels = extract_centroids_and_labels(masks)
+
+    # Plot centroids and labels
+    plot_centroids_and_labels(image, centroid_and_labels)
+
+    # Use SAM Predictor for point prompts
+    predictor = SamPredictor(sam)
+    predictor.set_image(image)
+
+    # Generate SAM masks and plot
+    generate_sam_masks_from_centroids(image, predictor, centroid_and_labels)
